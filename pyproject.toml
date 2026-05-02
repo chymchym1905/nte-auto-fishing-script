@@ -1,0 +1,25 @@
+[project]
+name = "nte-auto-fishing-script"
+version = "0.1.0"
+description = "Windows-only auto fishing helper for NTE."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Your Name" }
+]
+dependencies = [
+    "opencv-python>=4.9.0",
+    "dxcam>=0.0.5",
+    "numpy>=1.26.0",
+    "pydirectinput>=1.0.4",
+    "pygetwindow>=0.0.9",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_USERNAME/YOUR_REPOSITORY"
+Issues = "https://github.com/YOUR_USERNAME/YOUR_REPOSITORY/issues"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
