@@ -43,8 +43,8 @@ HOOK_REGION = HOOK_REGION_REF
 
 YELLOW_LOWER = np.array([20, 80, 120])
 YELLOW_UPPER = np.array([40, 255, 255])
-GREEN_LOWER = np.array([45, 80, 80])
-GREEN_UPPER = np.array([85, 255, 255])
+GREEN_LOWER = np.array([80, 140, 120])
+GREEN_UPPER = np.array([92, 255, 255])
 
 STEP2_BLUE_THRESHOLD = 0.06
 
@@ -64,6 +64,7 @@ SLEEP = {
 
 REENTER_CURRENT_STATE = "__REENTER_CURRENT_STATE__"
 STOP_KEY = 0x77  # F8
+DEFAULT_PROCESS_NAME = "HTGame.exe"
 
 CAPTURE_LEFT = 0
 CAPTURE_TOP = 0
@@ -85,6 +86,7 @@ class RECT(ctypes.Structure):
 
 
 SW_RESTORE = 9
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 def scale_region(region, width, height):
@@ -161,8 +163,34 @@ def get_window_capture_region(window):
     return get_window_client_region(window)
 
 
-def find_game_window(title="NTE"):
+def get_window_process_name(window):
+    pid = ctypes.c_ulong()
+    ctypes.windll.user32.GetWindowThreadProcessId(window._hWnd, ctypes.byref(pid))
+    if not pid.value:
+        return None
+
+    handle = ctypes.windll.kernel32.OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value
+    )
+    if not handle:
+        return None
+
+    try:
+        size = ctypes.c_ulong(260)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        ok = ctypes.windll.kernel32.QueryFullProcessImageNameW(
+            handle, 0, buffer, ctypes.byref(size)
+        )
+        if not ok:
+            return None
+        return Path(buffer.value).name
+    finally:
+        ctypes.windll.kernel32.CloseHandle(handle)
+
+
+def find_game_window(title="NTE", process_name=DEFAULT_PROCESS_NAME):
     normalized_title = title.casefold()
+    normalized_process_name = process_name.casefold() if process_name else None
     candidates = []
     for window in gw.getAllWindows():
         window_title = (window.title or "").strip()
@@ -171,14 +199,21 @@ def find_game_window(title="NTE"):
         if window.width <= 0 or window.height <= 0 or window.isMinimized:
             continue
 
-        score = 0
         lowered = window_title.casefold()
         if lowered == normalized_title:
-            score += 100
+            match_rank = 3
         elif lowered.startswith(normalized_title):
-            score += 50
-        score += window.width * window.height
-        candidates.append((score, window))
+            match_rank = 2
+        else:
+            match_rank = 1
+
+        process_rank = 0
+        process_label = get_window_process_name(window)
+        if normalized_process_name and process_label:
+            process_rank = int(process_label.casefold() == normalized_process_name)
+
+        area = window.width * window.height
+        candidates.append(((process_rank, match_rank, area), window))
 
     if not candidates:
         return None
@@ -187,11 +222,13 @@ def find_game_window(title="NTE"):
     return candidates[0][1]
 
 
-def activate_game_window(title="NTE"):
-    window = find_game_window(title)
+def activate_game_window(title="NTE", process_name=DEFAULT_PROCESS_NAME):
+    window = find_game_window(title, process_name=process_name)
     if not window:
-        print(f"Could not find a window with title containing {title!r}.")
-        return None
+        raise RuntimeError(
+            f"Could not find a visible window matching title {title!r}"
+            f" and process {process_name!r}."
+        )
 
     hwnd = window._hWnd
     if window.isMinimized:
@@ -259,12 +296,24 @@ def log_debug_frame(frame, state, frame_index):
     draw_region(annotated, "bar_region", BAR_REGION, (0, 255, 255))
     draw_region(annotated, "icon_region", ICON_REGION, (0, 255, 0))
     draw_region(annotated, "hook_region", HOOK_REGION, (255, 200, 0))
+    green_ratio = get_green_ratio(frame)
+    yellow_ratio = get_yellow_ratio(frame)
     cv2.putText(
         annotated,
         f"state={state}",
         (20, 32),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.9,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        annotated,
+        f"green_ratio={green_ratio:.4f} | yellow_ratio={yellow_ratio:.4f}",
+        (20, 68),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
         (255, 255, 255),
         2,
         cv2.LINE_AA,
@@ -312,7 +361,7 @@ def get_green_ratio(frame):
 
 
 def has_step3_bar(frame):
-    green_ratio = get_green_ratio(frame)
+    green_ratio = get_green_ratio(frame)    
     yellow_ratio = get_yellow_ratio(frame)
     return green_ratio > 0.03 or (green_ratio > 0.015 and yellow_ratio > 0.001)
 
@@ -370,7 +419,6 @@ def run_step1(frame, state_start):
 
     return "STEP1_WAIT_START"
 
-
 def run_step2_wait(frame, state_start):
     if time.time() - state_start > TIMEOUT["STEP2_WAIT_HOOK"]:
         print("STEP2 timeout, back to STEP1")
@@ -383,7 +431,6 @@ def run_step2_wait(frame, state_start):
         return "STEP3_FIGHTING"
 
     return "STEP2_WAIT_HOOK"
-
 
 def run_step2_trigger(frame, state_start):
     if has_step3_bar(frame):
@@ -426,10 +473,14 @@ def run_step4(frame, state_start):
     return "STEP4_FINISH"
 
 
-def run_bot(window_title="NTE", target_fps=60, preset="2k", debug_frames=False):
-    window = activate_game_window(window_title)
-    if not window:
-        return
+def run_bot(
+    window_title="NTE",
+    target_fps=60,
+    preset="2k",
+    debug_frames=False,
+    process_name=DEFAULT_PROCESS_NAME,
+):
+    window = activate_game_window(window_title, process_name=process_name)
 
     configure_preset(preset)
 
@@ -523,6 +574,11 @@ def parse_args():
         help="Game window title keyword to activate before starting. Default: NTE",
     )
     parser.add_argument(
+        "--process-name",
+        default=DEFAULT_PROCESS_NAME,
+        help=f"Process name to prefer when matching the game window. Default: {DEFAULT_PROCESS_NAME}",
+    )
+    parser.add_argument(
         "--fps",
         type=int,
         default=60,
@@ -543,4 +599,5 @@ if __name__ == "__main__":
         target_fps=args.fps,
         preset=args.preset,
         debug_frames=args.debug_frames,
+        process_name=args.process_name,
     )
