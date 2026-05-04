@@ -1,24 +1,41 @@
 import argparse
 import ctypes
 import time
+from pathlib import Path
 
 import cv2
 import dxcam
 import numpy as np
 import pydirectinput
 import pygetwindow as gw
+from pygetwindow import PyGetWindowException
 
 
-# Reference layout from the original 2560x1440 tuning.
-REFERENCE_W = 2560
-REFERENCE_H = 1440
+# Detection presets are reference layouts that get scaled to the capture size.
+PRESETS = {
+    "2k": {
+        "reference_size": (2560, 1440),
+        "bar_region": (800, 70, 1770, 130),
+        "icon_region": (2560 - 750, 1440 - 220, 2560 - 100, 1440 - 40),
+        "hook_region": (2560 - 280, 1440 - 220, 2560 - 100, 1440 - 40),
+    },
+    "1080p": {
+        "reference_size": (1920, 1080),
+        "bar_region": (600, 55, 1330, 95),
+        "icon_region": (1920 - 562, 1080 - 165, 1920 - 75, 1080 - 30),
+        "hook_region": (1920 - 210, 1080 - 165, 1920 - 75, 1080 - 30),
+    },
+}
+
+ACTIVE_PRESET = "2k"
+REFERENCE_W, REFERENCE_H = PRESETS[ACTIVE_PRESET]["reference_size"]
 
 SCREEN_W = REFERENCE_W
 SCREEN_H = REFERENCE_H
 
-BAR_REGION_REF = (800, 70, 1770, 130)
-ICON_REGION_REF = (REFERENCE_W - 750, REFERENCE_H - 220, REFERENCE_W - 100, REFERENCE_H - 40)
-HOOK_REGION_REF = (REFERENCE_W - 280, REFERENCE_H - 220, REFERENCE_W - 100, REFERENCE_H - 40)
+BAR_REGION_REF = PRESETS[ACTIVE_PRESET]["bar_region"]
+ICON_REGION_REF = PRESETS[ACTIVE_PRESET]["icon_region"]
+HOOK_REGION_REF = PRESETS[ACTIVE_PRESET]["hook_region"]
 
 BAR_REGION = BAR_REGION_REF
 ICON_REGION = ICON_REGION_REF
@@ -48,6 +65,27 @@ SLEEP = {
 REENTER_CURRENT_STATE = "__REENTER_CURRENT_STATE__"
 STOP_KEY = 0x77  # F8
 
+CAPTURE_LEFT = 0
+CAPTURE_TOP = 0
+DEBUG_FRAME_DIR = Path("debug_frames")
+DEBUG_FRAME_LIMIT = 200
+
+
+class POINT(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+class RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
+
+
+SW_RESTORE = 9
+
 
 def scale_region(region, width, height):
     x1, y1, x2, y2 = region
@@ -59,6 +97,19 @@ def scale_region(region, width, height):
         int(round(x2 * sx)),
         int(round(y2 * sy)),
     )
+
+
+def configure_preset(name):
+    global ACTIVE_PRESET, REFERENCE_W, REFERENCE_H, BAR_REGION_REF, ICON_REGION_REF, HOOK_REGION_REF
+
+    preset = PRESETS[name]
+    ACTIVE_PRESET = name
+    REFERENCE_W, REFERENCE_H = preset["reference_size"]
+    BAR_REGION_REF = preset["bar_region"]
+    ICON_REGION_REF = preset["icon_region"]
+    HOOK_REGION_REF = preset["hook_region"]
+
+    print(f"Using preset: {ACTIVE_PRESET} ({REFERENCE_W}x{REFERENCE_H})")
 
 
 def configure_screen(width, height):
@@ -76,22 +127,89 @@ def configure_screen(width, height):
     print(f"HOOK_REGION={HOOK_REGION}")
 
 
-def detect_primary_screen_size():
-    width = ctypes.windll.user32.GetSystemMetrics(0)
-    height = ctypes.windll.user32.GetSystemMetrics(1)
-    return width, height
+def configure_capture_origin(left, top):
+    global CAPTURE_LEFT, CAPTURE_TOP
+
+    CAPTURE_LEFT = left
+    CAPTURE_TOP = top
+
+    print(f"Capture origin: ({CAPTURE_LEFT}, {CAPTURE_TOP})")
+
+
+def get_window_client_region(window):
+    hwnd = window._hWnd
+    rect = RECT()
+    if not ctypes.windll.user32.GetClientRect(hwnd, ctypes.byref(rect)):
+        raise ctypes.WinError()
+
+    top_left = POINT(rect.left, rect.top)
+    bottom_right = POINT(rect.right, rect.bottom)
+    if not ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(top_left)):
+        raise ctypes.WinError()
+    if not ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(bottom_right)):
+        raise ctypes.WinError()
+
+    return (
+        top_left.x,
+        top_left.y,
+        bottom_right.x,
+        bottom_right.y,
+    )
+
+
+def get_window_capture_region(window):
+    return get_window_client_region(window)
+
+
+def find_game_window(title="NTE"):
+    normalized_title = title.casefold()
+    candidates = []
+    for window in gw.getAllWindows():
+        window_title = (window.title or "").strip()
+        if not window_title or normalized_title not in window_title.casefold():
+            continue
+        if window.width <= 0 or window.height <= 0 or window.isMinimized:
+            continue
+
+        score = 0
+        lowered = window_title.casefold()
+        if lowered == normalized_title:
+            score += 100
+        elif lowered.startswith(normalized_title):
+            score += 50
+        score += window.width * window.height
+        candidates.append((score, window))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
 
 
 def activate_game_window(title="NTE"):
-    windows = gw.getWindowsWithTitle(title)
-    if not windows:
+    window = find_game_window(title)
+    if not window:
         print(f"Could not find a window with title containing {title!r}.")
-        return False
+        return None
 
-    windows[0].activate()
-    print(f"Activated window: {windows[0].title}")
+    hwnd = window._hWnd
+    if window.isMinimized:
+        ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
+        time.sleep(0.5)
+
+    try:
+        window.activate()
+    except PyGetWindowException:
+        ctypes.windll.user32.ShowWindow(hwnd, SW_RESTORE)
+        ctypes.windll.user32.BringWindowToTop(hwnd)
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+        ctypes.windll.user32.SetActiveWindow(hwnd)
+        ctypes.windll.user32.SetFocus(hwnd)
+
+    print(f"Activated window: {window.title}")
     time.sleep(1)
-    return True
+    return window
 
 
 def press_f():
@@ -117,8 +235,44 @@ def tap_fight_key(key):
 
 
 def click_screen():
-    pydirectinput.click(SCREEN_W // 2, SCREEN_H // 2)
+    pydirectinput.click(CAPTURE_LEFT + SCREEN_W // 2, CAPTURE_TOP + SCREEN_H // 2)
     print(">>> Click center")
+
+
+def draw_region(image, label, region, color):
+    x1, y1, x2, y2 = region
+    cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+    cv2.putText(
+        image,
+        label,
+        (x1, max(24, y1 - 8)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        color,
+        2,
+        cv2.LINE_AA,
+    )
+
+
+def log_debug_frame(frame, state, frame_index):
+    annotated = frame.copy()
+    draw_region(annotated, "bar_region", BAR_REGION, (0, 255, 255))
+    draw_region(annotated, "icon_region", ICON_REGION, (0, 255, 0))
+    draw_region(annotated, "hook_region", HOOK_REGION, (255, 200, 0))
+    cv2.putText(
+        annotated,
+        f"state={state}",
+        (20, 32),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.9,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+
+    DEBUG_FRAME_DIR.mkdir(exist_ok=True)
+    output_path = DEBUG_FRAME_DIR / f"{frame_index:04d}_{state}.png"
+    cv2.imwrite(str(output_path), annotated)
 
 
 def crop_region(frame, region):
@@ -272,14 +426,25 @@ def run_step4(frame, state_start):
     return "STEP4_FINISH"
 
 
-def run_bot(window_title="NTE", target_fps=60):
-    if not activate_game_window(window_title):
+def run_bot(window_title="NTE", target_fps=60, preset="2k", debug_frames=False):
+    window = activate_game_window(window_title)
+    if not window:
         return
 
-    width, height = detect_primary_screen_size()
+    configure_preset(preset)
+
+    left, top, right, bottom = get_window_capture_region(window)
+    width = right - left
+    height = bottom - top
+    configure_capture_origin(left, top)
     configure_screen(width, height)
 
-    camera = dxcam.create(device_idx=0, output_idx=0, output_color="BGR")
+    camera = dxcam.create(
+        device_idx=0,
+        output_idx=0,
+        region=(left, top, right, bottom),
+        output_color="BGR",
+    )
     camera.start(target_fps=target_fps)
 
     print("Auto fishing started. Press F8 or Ctrl+C to stop.")
@@ -288,6 +453,7 @@ def run_bot(window_title="NTE", target_fps=60):
     current_state = "STEP1_WAIT_START"
     state_start = time.time()
     first_frame_seen = False
+    debug_frame_count = 0
     on_enter(current_state)
 
     try:
@@ -305,6 +471,12 @@ def run_bot(window_title="NTE", target_fps=60):
                 if frame_w != SCREEN_W or frame_h != SCREEN_H:
                     configure_screen(frame_w, frame_h)
                 first_frame_seen = True
+                if debug_frames:
+                    print(f"Debug frames will be written to: {DEBUG_FRAME_DIR.resolve()}")
+
+            if debug_frames and first_frame_seen and debug_frame_count < DEBUG_FRAME_LIMIT:
+                log_debug_frame(frame, current_state, debug_frame_count)
+                debug_frame_count += 1
 
             if current_state == "STEP1_WAIT_START":
                 next_state = run_step1(frame, state_start)
@@ -340,6 +512,12 @@ def parse_args():
         description="Auto fishing helper for NTE using screen capture and keyboard input."
     )
     parser.add_argument(
+        "--preset",
+        choices=sorted(PRESETS),
+        default="2k",
+        help="Detection preset to use. Default: 2k",
+    )
+    parser.add_argument(
         "--window-title",
         default="NTE",
         help="Game window title keyword to activate before starting. Default: NTE",
@@ -350,9 +528,19 @@ def parse_args():
         default=60,
         help="Screen capture target FPS. Default: 60",
     )
+    parser.add_argument(
+        "--debug-frames",
+        action="store_true",
+        help=f"Write up to {DEBUG_FRAME_LIMIT} annotated debug frames to {DEBUG_FRAME_DIR}.",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    run_bot(window_title=args.window_title, target_fps=args.fps)
+    run_bot(
+        window_title=args.window_title,
+        target_fps=args.fps,
+        preset=args.preset,
+        debug_frames=args.debug_frames,
+    )

@@ -13,7 +13,7 @@
 - 自動尋找並切換到《異環》遊戲視窗。
 - 偵測釣魚提示出現後，自動按下互動鍵。
 - 偵測釣魚進度條與目標區域，依照位置自動按 `A` / `D`。
-- 支援從 `2560x1440` 參考解析度自動縮放偵測範圍。
+- 內建 `2k` 與 `1080p` 偵測預設，並會依照當前擷取尺寸縮放範圍。
 - 可用 `F8` 安全停止程式。
 - 可透過指令參數調整遊戲視窗標題與擷取 FPS。
 
@@ -53,6 +53,12 @@ python nte_auto_fishing.py --window-title "NTE"
 python nte_auto_fishing.py --fps 30
 ```
 
+如果你是 `1920x1080` 佈局，可以直接使用 `1080p` 預設：
+
+```powershell
+python nte_auto_fishing.py --preset 1080p
+```
+
 ## 操作方式
 
 | 按鍵 | 功能 |
@@ -62,12 +68,28 @@ python nte_auto_fishing.py --fps 30
 
 ## 偵測調整
 
-預設偵測範圍是依照 `2560x1440` 畫面調整出來的。如果你的 UI 位置不同，可以修改 `nte_auto_fishing.py` 裡的區域常數：
+內建預設如下：
+
+- `2k`: `2560x1440`
+- `1080p`: `1920x1080`
+
+如果你的 UI 位置不同，可以先切換預設；還是不準的話，再修改 `nte_auto_fishing.py` 裡對應 preset 的區域常數：
 
 ```python
-BAR_REGION_REF = (800, 70, 1770, 130)
-ICON_REGION_REF = (REFERENCE_W - 750, REFERENCE_H - 220, REFERENCE_W - 100, REFERENCE_H - 40)
-HOOK_REGION_REF = (REFERENCE_W - 280, REFERENCE_H - 220, REFERENCE_W - 100, REFERENCE_H - 40)
+PRESETS = {
+    "2k": {
+        "reference_size": (2560, 1440),
+        "bar_region": (800, 70, 1770, 130),
+        "icon_region": (1810, 1220, 2460, 1400),
+        "hook_region": (2280, 1220, 2460, 1400),
+    },
+    "1080p": {
+        "reference_size": (1920, 1080),
+        "bar_region": (600, 52, 1328, 98),
+        "icon_region": (1358, 915, 1845, 1050),
+        "hook_region": (1710, 915, 1845, 1050),
+    },
+}
 ```
 
 如果顏色判斷不穩，也可以調整 HSV 顏色門檻：
@@ -98,7 +120,7 @@ python nte_auto_fishing.py --window-title "Your Window Title"
 
 ### 偵測位置不準
 
-程式會從 `2560x1440` 參考解析度縮放偵測範圍，但不同 UI 配置仍可能需要手動調整。請參考上方「偵測調整」章節修改區域常數。
+程式會先套用你選擇的 preset，再依照實際擷取尺寸縮放偵測範圍；如果遊戲 UI 位置仍不同，請參考上方「偵測調整」章節修改 preset 內容。
 
 ## 專案結構
 
@@ -130,7 +152,7 @@ Windows-only auto fishing helper for NTE. It uses screen capture plus simple col
 
 - Automatically activates the game window by title.
 - Detects the fishing prompt and fishing bar from the screen.
-- Scales detection regions from the original `2560x1440` tuning to your current capture size.
+- Includes built-in `2k` and `1080p` detection presets, then scales them to your current capture size.
 - Press `F8` to stop safely.
 - Configurable window title and capture FPS from the command line.
 
@@ -170,6 +192,12 @@ Lower capture FPS if your computer is under heavy load:
 python nte_auto_fishing.py --fps 30
 ```
 
+Use the `1080p` preset for a `1920x1080` layout:
+
+```powershell
+python nte_auto_fishing.py --preset 1080p
+```
+
 ## Controls
 
 | Key | Action |
@@ -179,18 +207,28 @@ python nte_auto_fishing.py --fps 30
 
 ## Tuning
 
-The default regions were tuned from a `2560x1440` layout:
+Built-in presets:
 
-- `BAR_REGION_REF`: fishing progress bar area
-- `ICON_REGION_REF`: prompt/icon area
-- `HOOK_REGION_REF`: hook prompt area
+- `2k`: `2560x1440`
+- `1080p`: `1920x1080`
 
-If detection is unreliable on your UI layout, adjust these constants in `nte_auto_fishing.py`:
+If detection is unreliable on your UI layout, start by switching presets. If needed, adjust the preset values in `nte_auto_fishing.py`:
 
 ```python
-BAR_REGION_REF = (800, 70, 1770, 130)
-ICON_REGION_REF = (REFERENCE_W - 750, REFERENCE_H - 220, REFERENCE_W - 100, REFERENCE_H - 40)
-HOOK_REGION_REF = (REFERENCE_W - 280, REFERENCE_H - 220, REFERENCE_W - 100, REFERENCE_H - 40)
+PRESETS = {
+    "2k": {
+        "reference_size": (2560, 1440),
+        "bar_region": (800, 70, 1770, 130),
+        "icon_region": (1810, 1220, 2460, 1400),
+        "hook_region": (2280, 1220, 2460, 1400),
+    },
+    "1080p": {
+        "reference_size": (1920, 1080),
+        "bar_region": (600, 52, 1328, 98),
+        "icon_region": (1358, 915, 1845, 1050),
+        "hook_region": (1710, 915, 1845, 1050),
+    },
+}
 ```
 
 Color thresholds can also be tuned:
@@ -221,7 +259,7 @@ python nte_auto_fishing.py --window-title "Your Window Title"
 
 ### Detection is wrong on my resolution
 
-The script scales from the reference `2560x1440` layout, but game UI position can still differ. Adjust the region constants listed in the tuning section.
+The script applies the selected preset first and then scales from that layout, but game UI position can still differ. Adjust the preset constants listed in the tuning section if needed.
 
 ## Project Structure
 
