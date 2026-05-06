@@ -1,10 +1,14 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "nte-auto-fishing-script"
 version = "0.1.0"
 description = "Windows-only auto fishing helper for NTE."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = "MIT"
 authors = [
     { name = "Your Name" }
 ]
@@ -15,6 +19,15 @@ dependencies = [
     "pydirectinput>=1.0.4",
     "pygetwindow>=0.0.9",
 ]
+
+[project.optional-dependencies]
+build = [
+    "pillow>=10.0.0",
+    "pyinstaller>=6.0.0",
+]
+
+[tool.setuptools]
+py-modules = ["nte_auto_fishing", "plot_bboxes"]
 
 [project.urls]
 Homepage = "https://github.com/YOUR_USERNAME/YOUR_REPOSITORY"

@@ -69,10 +69,49 @@ Current `run.bat` behavior:
 - Uses `.venv\Scripts\python.exe`.
 - Starts the script with `--preset 1080p`.
 
+## Build EXE
+
+Install the build dependency and package the script:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install .[build]
+.\build.ps1
+```
+
+Build output:
+
+- `dist\autofish.exe`
+
+The build script currently creates a single-file console EXE with PyInstaller.
+It also converts `images\mlem.png` into the Windows icon used by `autofish.exe`.
+
+## Run EXE
+
+```powershell
+.\dist\autofish.exe -fhd
+.\dist\autofish.exe -2k
+```
+
+Preset shortcuts:
+
+- `-fhd`: uses the `1080p` preset
+- `-2k`: uses the `2k` preset
+
+The original Python flags still work:
+
+```powershell
+python nte_auto_fishing.py --preset 1080p
+python nte_auto_fishing.py --preset 2k
+.\dist\autofish.exe --preset 1080p
+.\dist\autofish.exe --preset 2k
+```
+
 ## Command Line Options
 
 ```powershell
 python nte_auto_fishing.py --preset 1080p
+python nte_auto_fishing.py -fhd
+python nte_auto_fishing.py -2k
 python nte_auto_fishing.py --window-title "NTE"
 python nte_auto_fishing.py --process-name "HTGame.exe"
 python nte_auto_fishing.py --fps 30
@@ -82,6 +121,8 @@ python nte_auto_fishing.py --debug-frames
 Available arguments:
 
 - `--preset`: `2k` or `1080p`
+- `-fhd`: shortcut for `--preset 1080p`
+- `-2k`: shortcut for `--preset 2k`
 - `--window-title`: title keyword used to find the game window
 - `--process-name`: preferred process name when ranking matching windows
 - `--fps`: target capture FPS

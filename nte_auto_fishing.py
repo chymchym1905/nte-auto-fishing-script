@@ -562,11 +562,22 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Auto fishing helper for NTE using screen capture and keyboard input."
     )
-    parser.add_argument(
+    preset_group = parser.add_mutually_exclusive_group()
+    preset_group.add_argument(
         "--preset",
         choices=sorted(PRESETS),
-        default="2k",
         help="Detection preset to use. Default: 2k",
+    )
+    preset_group.add_argument(
+        "-fhd",
+        action="store_true",
+        help="Shortcut for --preset 1080p.",
+    )
+    preset_group.add_argument(
+        "-2k",
+        dest="is_2k",
+        action="store_true",
+        help="Shortcut for --preset 2k.",
     )
     parser.add_argument(
         "--window-title",
@@ -589,7 +600,18 @@ def parse_args():
         action="store_true",
         help=f"Write up to {DEBUG_FRAME_LIMIT} annotated debug frames to {DEBUG_FRAME_DIR}.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.fhd:
+        args.preset = "1080p"
+    elif args.is_2k:
+        args.preset = "2k"
+    elif args.preset is None:
+        args.preset = "2k"
+
+    del args.fhd
+    del args.is_2k
+    return args
 
 
 if __name__ == "__main__":
