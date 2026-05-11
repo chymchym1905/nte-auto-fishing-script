@@ -114,6 +114,16 @@ def configure_preset(name):
     print(f"Using preset: {ACTIVE_PRESET} ({REFERENCE_W}x{REFERENCE_H})")
 
 
+def detect_preset(width, height):
+    fhd_width, fhd_height = PRESETS["1080p"]["reference_size"]
+    two_k_width, two_k_height = PRESETS["2k"]["reference_size"]
+    if width <= fhd_width and height <= fhd_height:
+        return "1080p"
+    if width <= two_k_width and height <= two_k_height:
+        return "2k"
+    return "2k"
+
+
 def configure_screen(width, height):
     global SCREEN_W, SCREEN_H, BAR_REGION, ICON_REGION, HOOK_REGION
 
@@ -476,17 +486,23 @@ def run_step4(frame, state_start):
 def run_bot(
     window_title="NTE",
     target_fps=60,
-    preset="2k",
+    preset=None,
     debug_frames=False,
     process_name=DEFAULT_PROCESS_NAME,
 ):
     window = activate_game_window(window_title, process_name=process_name)
 
-    configure_preset(preset)
-
     left, top, right, bottom = get_window_capture_region(window)
     width = right - left
     height = bottom - top
+
+    selected_preset = preset or detect_preset(width, height)
+    if preset is None:
+        print(f"Auto-selected preset: {selected_preset} for client size {width}x{height}")
+    else:
+        print(f"Using manual preset override: {selected_preset}")
+
+    configure_preset(selected_preset)
     configure_capture_origin(left, top)
     configure_screen(width, height)
 
@@ -566,7 +582,7 @@ def parse_args():
     preset_group.add_argument(
         "--preset",
         choices=sorted(PRESETS),
-        help="Detection preset to use. Default: 2k",
+        help="Detection preset to use. Default: auto-detect from the game client size.",
     )
     preset_group.add_argument(
         "-fhd",
@@ -606,9 +622,6 @@ def parse_args():
         args.preset = "1080p"
     elif args.is_2k:
         args.preset = "2k"
-    elif args.preset is None:
-        args.preset = "2k"
-
     del args.fhd
     del args.is_2k
     return args

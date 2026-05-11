@@ -6,5 +6,5 @@ if %errorlevel% neq 0 (
 )
 
 cd /d "%~dp0"
-".venv\Scripts\python.exe" nte_auto_fishing.py --preset 1080p
+".venv\Scripts\python.exe" nte_auto_fishing.py
 pause

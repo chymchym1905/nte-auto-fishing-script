@@ -12,7 +12,7 @@ Windows-only auto fishing helper for NTE. The script captures the game window, d
 
 - &#33258;&#21205;&#20999;&#25563;&#21040;&#36938;&#25138;&#35222;&#31383;&#24460;&#38283;&#22987;&#25805;&#20316;&#12290;
 - &#20381;&#29031;&#37347;&#39770;&#27969;&#31243;&#20998;&#25104;&#38283;&#22987;&#12289;&#25289;&#37390;&#12289;&#23565;&#25239;&#12289;&#25910;&#23614;&#22235;&#20491;&#38542;&#27573;&#12290;
-- &#25903;&#25588;&#20839;&#24314; `1080p` &#33287; `2k` &#38928;&#35373;&#65292;&#20006;&#20381;&#29031;&#23526;&#38555;&#35222;&#31383;&#22823;&#23567;&#32302;&#25918;&#20597;&#28204;&#21312;&#22495;&#12290;
+- &#25903;&#25588;&#20839;&#24314; `1080p` &#33287; `2k` &#38928;&#35373;&#65292;&#26371;&#20808;&#33258;&#21205;&#20597;&#28204;&#36938;&#25138;&#35222;&#31383;&#35299;&#26512;&#24230;&#65292;&#20877;&#20381;&#29031;&#23526;&#38555;&#35222;&#31383;&#22823;&#23567;&#32302;&#25918;&#20597;&#28204;&#21312;&#22495;&#12290;
 - &#21487;&#36664;&#20986;&#38500;&#37679;&#25130;&#22294;&#21040; `debug_frames/`&#65292;&#26041;&#20415;&#35519;&#25972;&#21312;&#22495;&#33287;&#38991;&#33394;&#38272;&#27385;&#12290;
 - &#21487;&#36879;&#36942; `F8` &#23433;&#20840;&#20572;&#27490;&#12290;
 
@@ -36,12 +36,12 @@ run.bat
 &#22914;&#26524;&#35201;&#20351;&#29992;&#25171;&#21253;&#22909;&#30340;&#22519;&#34892;&#27284;&#65306;
 
 ```powershell
-.\dist\autofish.exe -fhd
-.\dist\autofish.exe -2k
+.\dist\autofish.exe
 ```
 
 &#24120;&#29992;&#21443;&#25976;&#65306;
 
+- &#40664;&#35469;&#26371;&#33258;&#21205;&#20381;&#35222;&#31383;&#35299;&#26512;&#24230;&#36984;&#25799;&#38928;&#35373;
 - `--preset 1080p` &#25110; `-fhd`
 - `--preset 2k` &#25110; `-2k`
 - `--window-title "NTE"`
@@ -78,7 +78,7 @@ Detection is based on:
 
 - Activates the NTE game window before starting.
 - Prefers windows from `HTGame.exe` by default when multiple matching titles exist.
-- Supports built-in `2k` and `1080p` presets.
+- Supports built-in `2k` and `1080p` presets with automatic selection based on the game client size.
 - Scales detection regions to the actual game client size.
 - Optional debug frame dump with annotated regions.
 - Safe stop with `F8`.
@@ -118,7 +118,7 @@ Current `run.bat` behavior:
 
 - Requests administrator elevation.
 - Uses `.venv\Scripts\python.exe`.
-- Starts the script with `--preset 1080p`.
+- Starts the script with automatic preset detection.
 
 ## Build EXE
 
@@ -139,11 +139,16 @@ It also converts `images\mlem.png` into the Windows icon used by `autofish.exe`.
 ## Run EXE
 
 ```powershell
-.\dist\autofish.exe -fhd
-.\dist\autofish.exe -2k
+.\dist\autofish.exe
 ```
 
-Preset shortcuts:
+Automatic preset selection:
+
+- `<= 1920x1080`: uses the `1080p` preset
+- `> 1920x1080` and `<= 2560x1440`: uses the `2k` preset
+- `> 2560x1440`: falls back to the `2k` preset because it is the largest built-in preset
+
+Manual preset shortcuts:
 
 - `-fhd`: uses the `1080p` preset
 - `-2k`: uses the `2k` preset
@@ -171,7 +176,7 @@ python nte_auto_fishing.py --debug-frames
 
 Available arguments:
 
-- `--preset`: `2k` or `1080p`
+- `--preset`: optional manual override, `2k` or `1080p`
 - `-fhd`: shortcut for `--preset 1080p`
 - `-2k`: shortcut for `--preset 2k`
 - `--window-title`: title keyword used to find the game window
